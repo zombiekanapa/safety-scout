@@ -1,23 +1,600 @@
-SCOUT.v1 | HF-POWERED 
-⚙️   
-CIVILIAN.SAFE
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safety Scout | Free & Open</title>
+    <meta name="description" content="Free civilian safety analysis powered by Hugging Face">
+    <link rel="manifest" href='data:application/manifest+json,{"name":"Safety Scout","short_name":"Scout","start_url":".","display":"standalone","background_color":"#000","theme_color":"#0f0","icons":[]}'>
+    <meta name="mobile-web-app-capable" content="yes">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root { --neon: #00ff41; --alert: #ff2a2a; --bg: #000; }
+        body {
+            background: var(--bg);
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            overflow-x: hidden;
+        }
+        .scanlines {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(rgba(0,0,0,0) 50%, rgba(0,0,0,0.15) 50%);
+            background-size: 100% 3px;
+            pointer-events: none;
+            z-index: 50;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #333;
+            border-right: 1px solid #333;
+        }
+        header {
+            padding: 1rem;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 20;
+            position: relative;
+        }
+        .title { color: white; font-size: 0.75rem; font-weight: bold; letter-spacing: 0.1em; }
+        .pulse { display: inline-block; width: 6px; height: 6px; background: #dc2626; border-radius: 50%; animation: pulse 1s infinite; margin-right: 0.5rem; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        button { cursor: pointer; border: none; background: transparent; color: inherit; padding: 0; }
+        .icon { width: 20px; height: 20px; display: inline-block; }
 
-Free Safety Analysis
-SCAN ENVIRONMENT
-RISK SCAN FIRE DRILL 
-INITIATE 
-CONFIG_CORE
-HF_API_TOKEN (optional for HF Spaces)  
-INFERENCE_MODE  Hugging Face Spaces (Free Tier) Local ONNX (On-Device, No API)  
-HF SPACE URL  
-✓ Uses ONNX model (no internet required)
+        .view { display: none; }
+        .view.active { display: flex; flex-direction: column; flex: 1; }
 
-✓ First load: ~15MB model download
+        /* HOME VIEW */
+        .home { gap: 1.5rem; padding: 1.5rem; }
+        .branding {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        .branding h1 {
+            font-size: 2rem;
+            color: white;
+            font-weight: 900;
+            letter-spacing: -0.05em;
+            margin-bottom: 0.25rem;
+        }
+        .branding .accent { color: var(--neon); }
+        .branding p {
+            font-size: 0.625rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+        }
 
-✓ Then fully offline
-LANGUAGE 
-ENGLISH POLSKI 
-SAVE & COMMIT 
-← DISMISS 
-🔊 📋 
+        .upload-zone {
+            aspect-ratio: 1;
+            border: 2px dashed #333;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.2s;
+            background: #0a0a0a;
+        }
+        .upload-zone:hover { border-color: var(--neon); }
+        .upload-zone img { position: absolute; width: 100%; height: 100%; object-fit: cover; opacity: 0.6; }
+        .upload-placeholder {
+            text-align: center;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .upload-placeholder svg {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 0.5rem;
+            opacity: 0.5;
+        }
+        .upload-placeholder p {
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: #666;
+        }
 
+        .modes {
+            display: flex;
+            gap: 0.5rem;
+            background: #0a0a0a;
+            padding: 0.25rem;
+            border-radius: 0.5rem;
+            border: 1px solid #1a1a1a;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 0.5rem;
+            font-size: 0.625rem;
+            font-weight: bold;
+            border-radius: 0.25rem;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .mode-btn.active {
+            background: rgba(0,255,65,0.1);
+            color: var(--neon);
+            border: 1px solid var(--neon);
+        }
+        .mode-btn { color: #666; }
+
+        .btn-analyze {
+            padding: 1rem;
+            font-size: 1rem;
+            font-weight: 900;
+            letter-spacing: 0.1em;
+            border: 2px solid #333;
+            background: transparent;
+            color: #666;
+            transition: all 0.2s;
+            border-radius: 0;
+        }
+        .btn-analyze:not(:disabled):hover {
+            border-color: var(--neon);
+            color: var(--neon);
+            background: rgba(0,255,65,0.05);
+        }
+        .btn-analyze:disabled { opacity: 0.5; }
+
+        /* SETTINGS VIEW */
+        .settings { padding: 1.5rem; gap: 1rem; }
+        .settings h2 { color: var(--neon); font-size: 0.875rem; font-weight: bold; margin-bottom: 0.5rem; }
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .field label {
+            font-size: 0.625rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .field input, .field select {
+            background: black;
+            border: 1px solid #333;
+            color: white;
+            padding: 0.75rem;
+            font-size: 0.75rem;
+            font-family: monospace;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .field input:focus, .field select:focus { border-color: var(--neon); }
+        .lang-btns {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .lang-btn {
+            flex: 1;
+            padding: 0.5rem;
+            border: 1px solid #333;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+        .lang-btn.active {
+            border-color: var(--neon);
+            color: var(--neon);
+        }
+        .btn-save {
+            background: #22c55e;
+            color: black;
+            font-weight: bold;
+            padding: 0.75rem;
+            font-size: 0.875rem;
+            margin-top: 1rem;
+            border-radius: 0.25rem;
+        }
+        .btn-save:hover { background: #16a34a; }
+
+        /* RESULTS VIEW */
+        .results { overflow: hidden; }
+        .results-header {
+            padding: 0.75rem;
+            background: #0a0a0a;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+        .results-header button {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.625rem;
+            color: #666;
+            transition: color 0.2s;
+        }
+        .results-header button:hover { color: var(--neon); }
+        .results-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            font-size: 0.75rem;
+            line-height: 1.5;
+        }
+        .results-content h2 {
+            color: var(--neon);
+            font-size: 1rem;
+            margin: 1rem 0 0.5rem;
+            border-bottom: 1px solid #333;
+            padding-bottom: 0.5rem;
+        }
+        .results-content h3 {
+            color: white;
+            margin: 0.75rem 0 0.25rem;
+            text-decoration: underline;
+        }
+        .results-content ul {
+            list-style: square;
+            margin-left: 1.2rem;
+            margin-bottom: 0.5rem;
+        }
+        .results-content li { margin-bottom: 0.25rem; }
+        .results-content strong { color: var(--alert); }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #333;
+            border-top-color: var(--neon);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error {
+            background: rgba(255, 42, 42, 0.1);
+            border: 1px solid #ff2a2a;
+            color: #ff9999;
+            padding: 0.75rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        input[type="file"] { display: none; }
+
+        @media (max-width: 480px) {
+            .container { border: none; }
+            .branding h1 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="scanlines"></div>
+    <div class="container">
+        <header>
+            <div>
+                <span class="pulse"></span><span class="title">SCOUT.v1 | HF-POWERED</span>
+            </div>
+            <button onclick="toggleSettings()">⚙️</button>
+        </header>
+
+        <!-- HOME VIEW -->
+        <div class="view active home" id="home">
+            <div class="branding">
+                <h1>CIVILIAN<span class="accent">.SAFE</span></h1>
+                <p>Free Safety Analysis</p>
+            </div>
+
+            <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+                <input type="file" id="fileInput" accept="image/*" onchange="handleImageUpload(event)">
+                <img id="previewImg" style="display:none">
+                <div class="upload-placeholder" id="placeholder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                    <p>SCAN ENVIRONMENT</p>
+                </div>
+            </div>
+
+            <div class="modes">
+                <button class="mode-btn active" onclick="setMode('safety', this)">RISK SCAN</button>
+                <button class="mode-btn" onclick="setMode('drill', this)">FIRE DRILL</button>
+            </div>
+
+            <button class="btn-analyze" id="analyzeBtn" onclick="runAnalysis()" disabled>INITIATE</button>
+        </div>
+
+        <!-- SETTINGS VIEW -->
+        <div class="view settings" id="settings">
+            <h2>CONFIG_CORE</h2>
+            
+            <div class="field">
+                <label>HF_API_TOKEN (optional for HF Spaces)</label>
+                <input type="password" id="hfToken" placeholder="Optional - for private models">
+            </div>
+
+            <div class="field">
+                <label>INFERENCE_MODE</label>
+                <select id="inferenceMode" onchange="updateInferenceDisplay()">
+                    <option value="hf">Hugging Face Spaces (Free Tier)</option>
+                    <option value="local">Local ONNX (On-Device, No API)</option>
+                </select>
+            </div>
+
+            <div id="hfDisplay">
+                <div class="field">
+                    <label>HF SPACE URL</label>
+                    <input type="text" id="hfSpaceUrl" placeholder="https://your-username-space.hf.space" value="https://civilian-safety.hf.space">
+                </div>
+            </div>
+
+            <div id="localDisplay" style="display:none; color:#666; font-size:0.75rem;">
+                <p>✓ Uses ONNX model (no internet required)</p>
+                <p>✓ First load: ~15MB model download</p>
+                <p>✓ Then fully offline</p>
+            </div>
+
+            <div class="field">
+                <label>LANGUAGE</label>
+                <div class="lang-btns">
+                    <button class="lang-btn active" onclick="setLanguage('en', this)">ENGLISH</button>
+                    <button class="lang-btn" onclick="setLanguage('pl', this)">POLSKI</button>
+                </div>
+            </div>
+
+            <button class="btn-save" onclick="saveSettings()">SAVE & COMMIT</button>
+        </div>
+
+        <!-- RESULTS VIEW -->
+        <div class="view results" id="results">
+            <div class="results-header">
+                <button onclick="toggleSettings(); setView('home')">← DISMISS</button>
+                <div>
+                    <button id="speakBtn" onclick="toggleSpeech()" title="Text to Speech">🔊</button>
+                    <button onclick="printResults()" title="Share/Print">📋</button>
+                </div>
+            </div>
+            <div class="results-content" id="resultsBody"></div>
+        </div>
+    </div>
+
+    <script>
+        let state = {
+            image: null,
+            mode: 'safety',
+            language: localStorage.getItem('scout_lang') || 'en',
+            hfToken: localStorage.getItem('scout_hf_token') || '',
+            hfSpaceUrl: localStorage.getItem('scout_hf_space') || 'https://civilian-safety.hf.space',
+            inferenceMode: localStorage.getItem('scout_mode') || 'hf',
+            speaking: false,
+            processing: false,
+            onnxSession: null
+        };
+
+        const prompts = {
+            en: {
+                safety: `Analyze this image for civilian safety hazards. Focus on:
+1. Fire Hazards (blocked exits, combustibles, wiring issues)
+2. Medical/Injury Risks (sharp corners, wet floors, missing AED)
+3. Structural/Utility Risks (unstable items, poor lighting, damaged equipment)
+
+List TOP 3 CRITICAL hazards found. For each hazard:
+- Severity (Critical/High/Medium)
+- Location in image
+- Immediate action needed
+- Why it matters for civilians
+
+Be direct and professional. Format as a clear, scannable report.`,
+                drill: `Create a 60-second EMERGENCY DRILL scenario based on this location.
+Define:
+1. SCENARIO: What emergency happened? (fire, medical, structural failure, etc.)
+2. CIVILIAN GOAL: What must people do in first 60 seconds?
+3. HAZARDS: What makes escape difficult?
+4. SUCCESS: How do people survive this?
+
+Make it realistic and actionable for civilians.`
+            },
+            pl: {
+                safety: `Analizuj to zdjęcie pod kątem zagrożeń bezpieczeństwa dla cywilów. Skupiaj się na:
+1. Zagrożenia pożarowe (zablokowane wyjścia, materiały palne, problemy z okablowaniem)
+2. Ryzyko medyczne (ostre krawędzie, mokra podłoga, brak AED)
+3. Zagrożenia strukturalne (niestabilne przedmioty, słabe oświetlenie, uszkodzony sprzęt)
+
+Wymień 3 NAJWAŻNIEJSZE zagrożenia. Dla każdego:
+- Intensywność (Krytyczne/Poważne/Średnie)
+- Lokalizacja
+- Natychmiastowe działanie
+- Dlaczego to ważne
+
+Bądź bezpośredni i profesjonalny.`,
+                drill: `Stwórz symulację sytuacji kryzysowej 60-sekundową dla tego miejsca.
+Zdefiniuj:
+1. SCENARIUSZ: Co się stało? (pożar, wypadek medyczny, zawalenie, itp.)
+2. CEL CYWILÓW: Co muszą robić w pierwszych 60 sekund?
+3. ZAGROŻENIA: Co utrudnia ucieczkę?
+4. POWODZENIE: Jak ludzie przeżyją?
+
+Bądź realistyczny.`
+            }
+        };
+
+        function setView(name) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(name).classList.add('active');
+        }
+
+        function toggleSettings() {
+            const settingsView = document.getElementById('settings');
+            if (settingsView.classList.contains('active')) {
+                setView('home');
+            } else {
+                setView('settings');
+            }
+        }
+
+        function setMode(mode, btn) {
+            state.mode = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        function setLanguage(lang, btn) {
+            state.language = lang;
+            document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            localStorage.setItem('scout_lang', lang);
+        }
+
+        function updateInferenceDisplay() {
+            const mode = document.getElementById('inferenceMode').value;
+            state.inferenceMode = mode;
+            document.getElementById('hfDisplay').style.display = mode === 'hf' ? 'block' : 'none';
+            document.getElementById('localDisplay').style.display = mode === 'local' ? 'block' : 'none';
+        }
+
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 1024;
+                    const scale = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scale;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    state.image = canvas.toDataURL('image/jpeg', 0.8);
+
+                    document.getElementById('previewImg').src = state.image;
+                    document.getElementById('previewImg').style.display = 'block';
+                    document.getElementById('placeholder').style.display = 'none';
+                    document.getElementById('analyzeBtn').disabled = false;
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function runAnalysis() {
+            if (!state.image) return;
+            
+            state.processing = true;
+            document.getElementById('analyzeBtn').textContent = 'CALCULATING...';
+            setView('results');
+            document.getElementById('resultsBody').innerHTML = '<div class="spinner"></div> Analyzing...';
+
+            try {
+                if (state.inferenceMode === 'hf') {
+                    await analyzeWithHuggingFace();
+                } else {
+                    await analyzeWithONNX();
+                }
+            } catch (error) {
+                document.getElementById('resultsBody').innerHTML = `<div class="error">ERROR: ${error.message}</div>`;
+            } finally {
+                state.processing = false;
+                document.getElementById('analyzeBtn').textContent = 'INITIATE';
+            }
+        }
+
+        async function analyzeWithHuggingFace() {
+            const url = state.hfSpaceUrl + '/api/analyze';
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image: state.image,
+                    mode: state.mode,
+                    language: state.language,
+                    prompt: prompts[state.language][state.mode]
+                })
+            });
+
+            if (!response.ok) throw new Error('HF Spaces analysis failed: ' + response.statusText);
+            const data = await response.json();
+            displayResults(data.result || data.text);
+        }
+
+        async function analyzeWithONNX() {
+            try {
+                const ort = await import('https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js');
+                alert('ONNX local inference coming soon. Using HF Spaces for now.');
+                await analyzeWithHuggingFace();
+            } catch (e) {
+                throw new Error('ONNX not available. Use HF Spaces mode.');
+            }
+        }
+
+        function displayResults(text) {
+            // Simple markdown-ish rendering
+            let html = text
+                .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
+                .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
+                .replace(/^\*\* (.*?)\*\*/gm, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+            
+            document.getElementById('resultsBody').innerHTML = html;
+        }
+
+        function toggleSpeech() {
+            const text = document.getElementById('resultsBody').innerText;
+            if (state.speaking) {
+                speechSynthesis.cancel();
+                state.speaking = false;
+                document.getElementById('speakBtn').textContent = '🔊';
+            } else {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = state.language === 'pl' ? 'pl-PL' : 'en-US';
+                utterance.onend = () => {
+                    state.speaking = false;
+                    document.getElementById('speakBtn').textContent = '🔊';
+                };
+                speechSynthesis.speak(utterance);
+                state.speaking = true;
+                document.getElementById('speakBtn').textContent = '⏸️';
+            }
+        }
+
+        function printResults() {
+            window.print();
+        }
+
+        function saveSettings() {
+            state.hfToken = document.getElementById('hfToken').value;
+            state.hfSpaceUrl = document.getElementById('hfSpaceUrl').value;
+            state.inferenceMode = document.getElementById('inferenceMode').value;
+            
+            localStorage.setItem('scout_hf_token', state.hfToken);
+            localStorage.setItem('scout_hf_space', state.hfSpaceUrl);
+            localStorage.setItem('scout_mode', state.inferenceMode);
+            
+            alert('Settings saved!');
+            setView('home');
+        }
+
+        // Load saved settings
+        document.getElementById('hfToken').value = state.hfToken;
+        document.getElementById('hfSpaceUrl').value = state.hfSpaceUrl;
+        document.getElementById('inferenceMode').value = state.inferenceMode;
+        updateInferenceDisplay();
+        
+        // Set language buttons
+        document.querySelectorAll('.lang-btn').forEach((btn, i) => {
+            if ((i === 0 && state.language === 'en') || (i === 1 && state.language === 'pl')) {
+                btn.classList.add('active');
+            }
+        });
+    </script>
+</body>
+</html>
